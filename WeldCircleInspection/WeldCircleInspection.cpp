@@ -21,7 +21,7 @@ WeldCircleInspection::WeldCircleInspection(eType type) {
     }
 
     devolpMode = 0;     //test : 0 or 1
-    std::string strImg = m_filePath + "360.bmp";
+    std::string strImg = m_filePath + "90.bmp";
 
     m_outputPath = m_filePath.substr(0, m_filePath.size() - 1) + "Test\\";
 
@@ -212,7 +212,6 @@ bool WeldCircleInspection::WeldCircleDetect() {
 
     return true;
 }
-
 /* Least-Squares */
 std::pair<float, float> fitLineLeastSquares(const std::vector<cv::Point>& points) {
     float sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
@@ -232,11 +231,60 @@ std::pair<float, float> fitLineLeastSquares(const std::vector<cv::Point>& points
     // slope, intercept 
     return { m, b };
 }
+// RANSAC 알고리즘
+std::pair<float, float> ransac(const std::vector<cv::Point>& points, int maxIterations,
+    float threshold, int& inlierCount) {
+    srand(time(0));  // 랜덤 시드
 
+    int bestInlierCount = 0;
+    std::pair<float, float> bestLine;
 
-/**
-* 최소자승법 外 방법 있나 study
-*/
+    // 반복적으로 두 점을 랜덤하게 선택하여 모델을 추정
+    for (int i = 0; i < maxIterations; ++i) {
+        int idx1 = rand() % points.size();
+        int idx2 = rand() % points.size();
+
+        // 두 점이 같지 않도록 확인
+        if (idx1 == idx2) continue;
+
+        cv::Point p1 = points[idx1];
+        cv::Point p2 = points[idx2];
+
+        std::pair<float,float> fX = fitLineLeastSquares({ p1, p2 });
+
+        // fitLineLeastSquares  
+        // return type : y 방정식
+        float slopeY = fX.first; 
+        float interceptY = fX.second;
+
+        // 기울기와 절편을 X 기준으로 계산
+        float slopeX = 1.0f / slopeY;
+        float interceptX = (-1.0f) * interceptY / slopeY;
+
+        // InlierCount
+        int count = 0;
+        for (const auto& point : points) {
+            float x_pred = slopeX * point.y + interceptX;
+
+            // 점과 직선 사이의 거리 계산
+            float distance = std::abs(point.x - x_pred);
+
+            if (distance < threshold) {             
+                count++;
+            }
+        }
+
+        // 가장 많은 인라이어를 가진 모델 선택
+        if (count > bestInlierCount) {
+            bestInlierCount = count;
+            bestLine = { slopeX, interceptX };
+        }
+    }
+
+    inlierCount = bestInlierCount;
+    return bestLine;
+}
+
 bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     cv::Mat image = _image;
 
@@ -283,9 +331,7 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     
     // 3) Edge Inspection
     std::vector<cv::Point>edgePoints;
-    
-    int avgEdgeX = 0;           /* Least-squares 적용 전 threshold 를 적용하기 위한 avg */ 
-
+    /*int avgEdgeX = 0;*/
     for (int y = 0; y < unwrapimage.rows; y++) {
         int maxEdgeX = -1;
         int maxEdgeValue = -1;
@@ -302,57 +348,40 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
         }
         if (maxEdgeX != -1) {
             edgePoints.push_back(cv::Point(maxEdgeX, y));
-            avgEdgeX += maxEdgeX;
+            //avgEdgeX += maxEdgeX;
         }
     }
-    
-    // X-axis Edge Threshold
-    avgEdgeX /= edgePoints.size();
-    int threshold = 3;             // magicNum
-    float maxThreshold = avgEdgeX + avgEdgeX*(threshold / 100.0);
-    float minThreshold = avgEdgeX - avgEdgeX*(threshold / 100.0);
-    
-    /* CHECK
-        최소 자승법 팀장님께 질문
 
-    // range  :  { (avg) x (-threshold)%    ~   (avg) x (threshold)%  }
+#if 1
+    /*
+    [Developing--]
+    pre-processing image Circle unwrap -> Sobel -> binary
+    -> EdgeX point -> RANSAN -> Least Squares
+    */
+    // 4) make small Circle
+    // RANSAC parameter
+    int maxIterations = 100000;   // 최대 반복 횟수
+    float ransacThreshold = 0.05f;     // 인라이어 판단 임계값
+    int inlierCount = 0;
 
-    for(int i = 0; i < edgePoints.size(); i ++){
-        if (edgePoints[i].x < minThreshold || edgePoints[i].x > maxThreshold) {
-            edgePoints.erase(edgePoints.begin() + i);
-            i--;
-        }
-    }
-    
-    // 4) Line fitting (Least-squares)
-    std::pair<float, float> fX = fitLineLeastSquares(edgePoints);
-    float slopeY = fX.first;
-    float interceptY = fX.second;
-    float slopeX = 1.0 / slopeY;
-    float interceptX = (-1.0f) * interceptY / slopeY;
+    // RANSAC 수행
+    std::pair<float,float> fX = ransac(edgePoints, maxIterations, ransacThreshold, inlierCount);
 
-    std::cout << "\nedge AVG : " << avgEdgeX;
-    std::cout << "\nslope Y : " << slopeY;
-    std::cout << "\nintercept Y : " << interceptY;
-    std::cout << "\nslope X : " << slopeX;
-    std::cout << "\nintercept X : " << interceptX;
-
-    int yStart = 0;
-    int yEnd = unwrapimage.rows;
-    int xStart = (int)(yStart * slopeX + interceptX);
-    int xEnd = (int)(yEnd * slopeX + interceptX);
-    
     ////Draw
     cv::Mat resultImage;
     cv::cvtColor(unwrapimage, resultImage, cv::COLOR_GRAY2BGR);
-    cv::line(resultImage, cv::Point(xStart, yStart), cv::Point(xEnd, yEnd), cv::Scalar(0, 0, 255));
-    */
+    cv::line(resultImage, cv::Point(fX.second, 0), cv::Point(fX.second, unwrapimage.rows), cv::Scalar(0, 0, 255), 1);
 
+    m_nInscribedRadius = fX.second;
+    cv::circle(m_colorImage, m_cartesianCenter, m_nInscribedRadius, cv::Scalar(0, 0, 255), 2);
+    m_nWeldWidth = m_nCircumscribedRadius - m_nInscribedRadius;
+    std::cout << "\n Weld Width : " << m_nWeldWidth << "pixel";
+
+#else if
     /* 
-        [Nonhing Least-squares]
+        [don't use Least-squares]
         pre-processing image Circle unwrap -> Sobel -> binary -> find EdgeX average (small circle radius)
     */
-
     // 4) make small Circle
     cv::Mat resultImage;
     cv::cvtColor(unwrapimage, resultImage, cv::COLOR_GRAY2BGR);
@@ -363,6 +392,7 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     cv::circle(m_colorImage, m_cartesianCenter, m_nInscribedRadius, cv::Scalar(0, 0, 255), 2);
     m_nWeldWidth = m_nCircumscribedRadius - m_nInscribedRadius;
     std::cout << "\n Weld Width : " << m_nWeldWidth <<"pixel";
+#endif
 
     if (devolpMode) {
         SaveBmp(unwrapimage, "3.1) Unwrapped image");
@@ -370,7 +400,7 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
         SaveBmp(binary, "3.3) binary");
         SaveBmp(resultImage, "3.4) Least-Squares Img");
         SaveBmp(m_colorImage, "3.5) Welding Circle Inspection");
-        cv::imshow("sss", resultImage);
+        cv::imshow("Least-Squares Img", resultImage);
         cv::waitKey(0);
         cv::imshow("circle Inspection", resizeShow(m_colorImage));
         cv::waitKey(0);
