@@ -54,7 +54,7 @@ bool WeldCircleInspection::LargeCircleDetect(cv::Mat inputMat, cv::Mat& outputMa
 
     cv::Mat resizedImage;
     cv::resize(inputMat, resizedImage, cv::Size(scaleWidth, scaleHeight), scaleFactor, scaleFactor, cv::INTER_AREA);
-    SaveBmp("resizeImage", resizedImage);
+    //SaveBmp("resizeImage", resizedImage);
 
     // Circle Detecting from Down-scale Image
     std::vector<cv::Vec3f> circles;
@@ -138,7 +138,7 @@ bool WeldCircleInspection::WeldCircleDetect() {
 
     // [ 0. Read]
     TimeStart();
-    developMode = true;
+    developMode = false;
     std::string path = m_filePath + "+270.bmp";
 
     if (!ReadImage(path))
@@ -277,7 +277,7 @@ std::pair<float, float> WeldCircleInspection::Ransac(std::vector<cv::Point>& poi
         pre-processing image Circle unwrap -> Sobel -> binary
         -> EdgeX point -> RANSAN -> Least Squares
 
-        step 1 : cartesian To polar (circle image unwrapped)
+        step 1 : convert  circle -> 2d unwrapped image
         step 2 : unwrapped image To binary image
         step 3 : Width-axis Edge inspection
         step 4 : make small Circle
@@ -285,33 +285,39 @@ std::pair<float, float> WeldCircleInspection::Ransac(std::vector<cv::Point>& poi
 bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
 
     cv::Mat image = _image;
-    const int nAngle = 360;
+    const int nMaxDegree = 360;
     const int r = m_nCircumscribedRadius;
     const int cx = m_cartesianCenter.x;
     const int cy = m_cartesianCenter.y;
 
     // Unwrapp image Size : (circle radius * 360)
     int unwrapImageWidth = r;
-    int unwrapImageHeight = nAngle;
+    int unwrapImageHeight = nMaxDegree;
 
     cv::Mat unwrapImage_preProc = cv::Mat::zeros(unwrapImageHeight, unwrapImageWidth, CV_8UC1);
+    cv::Mat unwrapImage_orig = cv::Mat::zeros(unwrapImageHeight, unwrapImageWidth, CV_8UC1);
 
     for (int height = 0; height < unwrapImageHeight; ++height) {
         double radian = height * M_PI / 180.0;  // degree To radian
-
+        
         for (int width = 0; width < unwrapImageWidth; ++width) {
-            // 1-1) cartesian To polar
+            // 1-1) cartesian -> Polar 변환 할 필요 없음
+            //      hough circle 통해 circle Center와 radius을 알기 때문
+            //      width : radius,   height : angle(degree)
             int x = (int)(width * cos(radian)) + cx;
             int y = (int)(width * sin(radian)) + cy;
-
-            // 1-2) Make Unwrapped image
+            
+            // 1-2) circle To 2d-Unwrapped-image
             if (x >= 0 && x < m_image.cols && y >= 0 && y < m_image.rows) {
                 int value = (int)image.at<uchar>(y, x);
                 unwrapImage_preProc.at<uchar>(height, width) = static_cast<uchar>(value);
+
+                int origValue = (int)m_image.at<uchar>(y, x);
+                unwrapImage_orig.at<uchar>(height, width) = static_cast<uchar>(origValue);
             }
         }
     }
-    
+
     //2) unwrapimage To binary
     cv::Mat sobelX;
     cv::Sobel(unwrapImage_preProc, sobelX, CV_8UC1, 1, 0, 3);
@@ -329,7 +335,7 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
         int maxEdgeValue = -1;
 
         //for (int x = 0; x < unwrapimage.cols; x++) {      //orig Range
-        // Range hardcoding
+        // Range-hardcoding
         for (int x = unwrapImageWidth /2; x < unwrapImageWidth; x++) {
             int edgeValue = binary.at<uchar>(y, x);
             if (edgeValue == nBinaryMax) {
@@ -354,13 +360,15 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     float slopeX = fX.first;
     float interceptX = fX.second;
     // Inscribed Circel info
-    for (int i = 0; i < nAngle; i++) {
+    for (int degree = 0; degree < nMaxDegree; degree++) {
+        double radian = degree* M_PI / 180.0;  // degree To radian
         // y = mX + b
-        float fRadius = i * slopeX + interceptX;
-        m_vInscribed.push_back({ i, fRadius });
+        float fRadius = degree * slopeX + interceptX;
+
+        m_vInscribed.push_back({ radian, fRadius });
 
         float fWeldBeadWidth = (float)m_nCircumscribedRadius - fRadius;
-        m_vWeldBeadWidth.push_back({ i, fWeldBeadWidth });
+        m_vWeldBeadWidth.push_back({ radian, fWeldBeadWidth });
 
         m_fMinWeldWidth = std::min(m_fMinWeldWidth, fWeldBeadWidth);
         m_fMaxWeldWidth = std::max(m_fMaxWeldWidth, fWeldBeadWidth);
@@ -376,12 +384,14 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
 
     // polar To cartesian Draw
     for (const auto& polar : m_vInscribed){
-        float radian = polar.first;
-        float r= polar.second;
-        int x = (int)(r * cos(radian)) + m_cartesianCenter.x;
-        int y = (int)(r * sin(radian)) + m_cartesianCenter.y;
+        double radian = polar.first;
+        float r = polar.second;
+        float x = (r * cos(radian)) + m_cartesianCenter.x;
+        float y = (r * sin(radian)) + m_cartesianCenter.y;
+        
+        int degree = round(radian * (180 / M_PI));
 
-        cv::circle(m_colorImage, cv::Point(x , y ), 2, cv::Scalar(0, 0, 255), 2);
+        cv::circle(m_colorImage, cv::Point(x ,y ), 2, cv::Scalar(0, 0, 255), 2);
     }
 
     if (developMode) {

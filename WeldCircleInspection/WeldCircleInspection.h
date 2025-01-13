@@ -18,7 +18,6 @@ enum class eType
 /*
 	--> ANODE, CATHODE ñé 1°³ »ç¿ë Áß
 */
-
 #pragma once
 class WeldCircleInspection
 {
@@ -43,7 +42,7 @@ private:
 	bool LargeCircleDetect(cv::Mat inputMat, cv::Mat& outputMat, double minDist,
 		double param1, double param2,
 		int minRadius, int maxRadius);
-	// [based Polar unwrap image]
+	// [circle To 2d-image]
 	bool SmallCircleDetect(cv::Mat& image);
 	std::pair<float, float> Ransac(std::vector<cv::Point>& points, int maxIterations, float threshold, int& inlierCount);
 	std::pair<float, float> LeastSquares(const std::vector<cv::Point>& points);
@@ -56,22 +55,26 @@ private:
 	cv::Point2i m_cartesianCenter;
 	// Circumscribed Circle
 	int m_nCircumscribedRadius;								
+	
 	// Inscribed Circle
-	std::vector<std::pair<int, float>> m_vInscribed;		// radian, radius
+	// 3 o'clock -> degree 0
+	// 9 o'clock -> degree 180
+	std::vector<std::pair<double, float>> m_vInscribed;		// radian, radius
+	std::vector<std::pair<double, float>> m_vWeldBeadWidth;	// radian, welding Width
 
-	std::vector<std::pair<int, float>> m_vWeldBeadWidth;	// radian, welding Width
-	float m_fMinWeldWidth =INT_MAX , m_fMaxWeldWidth = INT_MIN;
+	float m_fMinWeldWidth =INT_MAX , m_fMaxWeldWidth = INT_MIN;		//test
 
 	// For Utility 
 	eType m_EnumType;
 	std::string m_filePath;
 	std::string m_outputPath;
 
-	// For timer
+	// For time
 	std::chrono::high_resolution_clock::time_point m_start_time;
 	std::chrono::high_resolution_clock::time_point m_end_time;
 	void TimeStart() { m_start_time = std::chrono::high_resolution_clock::now(); }
 	void TimeEnd(std::string str);
 	long long llWeldCircleDetectTime;
+
 };
 
