@@ -39,29 +39,28 @@ private:
 	// [pre -Processing]
 	cv::Mat AnodeProc(cv::Mat& origImg);
 	cv::Mat CathodeProc(cv::Mat& origImg);
+	// [based Hough Transform]
 	bool LargeCircleDetect(cv::Mat inputMat, cv::Mat& outputMat, double minDist,
 		double param1, double param2,
 		int minRadius, int maxRadius);
+	// [based Polar unwrap image]
 	bool SmallCircleDetect(cv::Mat& image);
+	std::pair<float, float> Ransac(std::vector<cv::Point>& points, int maxIterations, float threshold, int& inlierCount);
 	std::pair<float, float> LeastSquares(const std::vector<cv::Point>& points);
-	std::pair<float, float> Ransac(std::vector<cv::Point>& points, int maxIterations,
-		float threshold, int& inlierCount);
-
-	bool CircumscribedDetect(cv::Mat& preProImg);
-
 
 private:
 	cv::Mat m_image;		//gray-scale
 	cv::Mat m_colorImage;	//3ch
 
 	// circle Info
-	int m_nCircumscribedRadius;				//ø‹¡¢ radius
+	cv::Point2i m_cartesianCenter;
+	// Circumscribed Circle
+	int m_nCircumscribedRadius;								
+	// Inscribed Circle
 	std::vector<std::pair<int, float>> m_vInscribed;		// radian, radius
+
 	std::vector<std::pair<int, float>> m_vWeldBeadWidth;	// radian, welding Width
 	float m_fMinWeldWidth =INT_MAX , m_fMaxWeldWidth = INT_MIN;
-
-	cv::Point2i m_cartesianCenter;
-
 
 	// For Utility 
 	eType m_EnumType;

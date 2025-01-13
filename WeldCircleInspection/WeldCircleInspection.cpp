@@ -8,11 +8,11 @@ WeldCircleInspection::WeldCircleInspection(eType type) {
     // hardcoding
     switch (m_EnumType) {
     case eType::ANODE: {
-        m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\anode\\-";
+        m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\anode\\";
     }
     break;
     case eType::CATHODE: {
-        m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\cathode\\+";
+        m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\cathode\\";
     }
     break;
     default: {
@@ -129,57 +129,22 @@ cv::Mat WeldCircleInspection::CathodeProc(cv::Mat& origImg) {
         outMat = cl1.clone();
     }
 
-    
-
     return outMat;
 }
 
-bool WeldCircleInspection::CircumscribedDetect(cv::Mat& preProcImg) {
-    cv::Mat image = preProcImg.clone();
-    
-    cv::Mat binary;
-    cv::threshold(image, binary, 100, 255, cv::THRESH_BINARY_INV);
-    cv::imshow("binary", resizeShow(binary));
-    cv::waitKey(0);
-    SaveBmp("binary", binary);
-
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-
-    cv::Mat resultImage = image.clone();
-    cv::cvtColor(resultImage, resultImage, cv::COLOR_GRAY2BGR);
-    int minRadius = 100, maxRadius = 800;
-    // 5. 각 컨투어에서 원의 중심과 반지름을 추정
-    for (size_t i = 0; i < contours.size(); i++) {
-        // 5.1. 최소 외접원 찾기 (왜곡된 원이라도 외접원을 찾을 수 있음)
-        cv::Point2f center;
-        float radius;
-        cv::minEnclosingCircle(contours[i], center, radius);
-
-        // 5.2. 반지름이 최소값과 최대값 사이인 경우에만 표시
-        if (radius >= minRadius && radius <= maxRadius) {
-            // 5.3. 원 그리기
-            cv::circle(resultImage, center, (int)radius, cv::Scalar(0, 0, 255), 2);  // 빨간색 원
-            cv::circle(resultImage, center, 3, cv::Scalar(0, 255, 0), 2);  // 중심점 표시 (초록색)
-            
-            
-            std::cout << center.x << ', ' << center.y << "\n";
-        }
-    }
-    cv::imshow("dete", resizeShow(resultImage) );
-    cv::waitKey(0);
-        
-    return true;
-}
 bool WeldCircleInspection::WeldCircleDetect() {
+    
+    int nRet = 0;   // for debugging
+
     // [ 0. Read]
     TimeStart();
     developMode = true;
-    std::string path = m_filePath + "270.bmp";
+    std::string path = m_filePath + "+270.bmp";
 
     if (!ReadImage(path))
         return false;
-    TimeEnd("\n\n 0) Read Image ");
+    TimeEnd("\n\n 0) Read Image "); 
+    nRet++;
 
     // [ 1. Pre-processing ]
     TimeStart();
@@ -197,12 +162,11 @@ bool WeldCircleInspection::WeldCircleDetect() {
     if (developMode) 
         SaveBmp("1) pre-Processing Image", preProcImg);
     TimeEnd("\n\n 1) Processing Time : ");
+    nRet++;
 
     // [ 2. Hough Circle Transform (Large Circle detect) ]
     TimeStart();
-    
-    // origCode
-    //double param1 = 50, param2 = 30;      // scale 1
+    //double param1 = 50, param2 = 30;      // scale 1  // origCode
     double param1 = 130, param2 = 20;       // scale 0.5
 
     int nMinDist = std::min(m_image.cols, m_image.rows);
@@ -217,13 +181,14 @@ bool WeldCircleInspection::WeldCircleDetect() {
         cv::waitKey(0);
     }
     TimeEnd("\n\n 2) Large Circle Inspection Time : ");
-
+    nRet++;
     
     // [ 3. Find small Circle ]
     TimeStart();
     if (!SmallCircleDetect(preProcImg))
         return false;
     TimeEnd("\n\n 3) Small Circle Inspection Time : ");
+    nRet++;
 
     // check Total Time
     std::cout << "\n\n [Total Time] " << llWeldCircleDetectTime << "ms\n";
@@ -326,30 +291,30 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     const int cy = m_cartesianCenter.y;
 
     // Unwrapp image Size : (circle radius * 360)
-    int imgWidth = r;
-    int imgHeight = nAngle;
+    int unwrapImageWidth = r;
+    int unwrapImageHeight = nAngle;
 
-    cv::Mat unwrapimage = cv::Mat::zeros(imgHeight, imgWidth, CV_8UC1);
+    cv::Mat unwrapImage_preProc = cv::Mat::zeros(unwrapImageHeight, unwrapImageWidth, CV_8UC1);
 
-    for (int height = 0; height < imgHeight; ++height) {
+    for (int height = 0; height < unwrapImageHeight; ++height) {
         double radian = height * M_PI / 180.0;  // degree To radian
 
-        for (int width = 0; width < imgWidth; ++width) {
+        for (int width = 0; width < unwrapImageWidth; ++width) {
             // 1-1) cartesian To polar
             int x = (int)(width * cos(radian)) + cx;
             int y = (int)(width * sin(radian)) + cy;
 
             // 1-2) Make Unwrapped image
             if (x >= 0 && x < m_image.cols && y >= 0 && y < m_image.rows) {
-                int origValue = (int)image.at<uchar>(y, x);
-                unwrapimage.at<uchar>(height, width) = static_cast<uchar>(origValue);
+                int value = (int)image.at<uchar>(y, x);
+                unwrapImage_preProc.at<uchar>(height, width) = static_cast<uchar>(value);
             }
         }
     }
-
+    
     //2) unwrapimage To binary
     cv::Mat sobelX;
-    cv::Sobel(unwrapimage, sobelX, CV_8UC1, 1, 0, 3);
+    cv::Sobel(unwrapImage_preProc, sobelX, CV_8UC1, 1, 0, 3);
 
     cv::Mat binary;
     int nThreshold = 50;
@@ -359,14 +324,13 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     // 3) Width-axis Edge inspection
     std::vector<cv::Point>edgePoints;
 
-    for (int y = 0; y < unwrapimage.rows; y++) {
+    for (int y = 0; y < unwrapImageHeight; y++) {
         int maxEdgeX = -1;
         int maxEdgeValue = -1;
 
         //for (int x = 0; x < unwrapimage.cols; x++) {      //orig Range
-        
         // Range hardcoding
-        for (int x = unwrapimage.cols/2; x < unwrapimage.cols; x++) {
+        for (int x = unwrapImageWidth /2; x < unwrapImageWidth; x++) {
             int edgeValue = binary.at<uchar>(y, x);
             if (edgeValue == nBinaryMax) {
                 maxEdgeValue = edgeValue;
@@ -403,9 +367,12 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     }
     
     // 4-2) draw
+    float yStart_X = 0 * slopeX + interceptX;                       // if(y ==0) -> x
+    float yEnd_X = (unwrapImageHeight) * slopeX + interceptX;       // if(y== height) -> x
+
     cv::Mat resultImage;
-    cv::cvtColor(unwrapimage, resultImage, cv::COLOR_GRAY2BGR);
-    cv::line(resultImage, cv::Point(interceptX, 0), cv::Point(interceptX, unwrapimage.rows), cv::Scalar(0, 0, 255), 1);
+    cv::cvtColor(unwrapImage_preProc, resultImage, cv::COLOR_GRAY2BGR);
+    cv::line(resultImage, cv::Point(yStart_X, 0), cv::Point(yEnd_X, unwrapImageHeight), cv::Scalar(0, 0, 255), 1);
 
     // polar To cartesian Draw
     for (const auto& polar : m_vInscribed){
@@ -418,7 +385,7 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     }
 
     if (developMode) {
-        SaveBmp("3.1) Unwrapped image", unwrapimage);
+        SaveBmp("3.1) Unwrapped image", unwrapImage_preProc);
         SaveBmp("3.2) sobel", sobelX);
         SaveBmp("3.3) binary", binary);
         SaveBmp("3.4) Least-Squares Img", resultImage);
@@ -442,7 +409,8 @@ void WeldCircleInspection::TimeEnd(std::string str) {
 }
 
 bool WeldCircleInspection::ReadImage(std::string strImg) {
-    m_outputPath = m_filePath.substr(0, m_filePath.size() - 1) + "Test\\";
+    //m_outputPath = m_filePath.substr(0, m_filePath.size() - 1) + "Test\\";
+    m_outputPath = m_filePath + "Test\\";
 
     m_image = cv::imread(strImg, cv::IMREAD_GRAYSCALE);
     m_colorImage = cv::imread(strImg, cv::IMREAD_COLOR);
