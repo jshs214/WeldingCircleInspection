@@ -1,6 +1,6 @@
 #include "WeldCircleInspection.h"
 
-int developMode;
+int developMode ;
 
 WeldCircleInspection::WeldCircleInspection(eType type) {
     m_EnumType = type;
@@ -22,7 +22,6 @@ WeldCircleInspection::WeldCircleInspection(eType type) {
     }
     
     llWeldCircleDetectTime = 0;
-    developMode = 0;     // 0 : false   ||  value : true
     
 }
 
@@ -36,20 +35,32 @@ cv::Mat WeldCircleInspection::resizeShow(cv::Mat mat) {
     resize(mat, resizeMat, cv::Size(), scale, scale);
     return resizeMat;
 }
-void WeldCircleInspection::SaveBmp(cv::Mat mat, std::string name) {
+void WeldCircleInspection::SaveBmp(std::string name, cv::Mat mat) {
     std::string strFile = m_outputPath + name + ".bmp";
     cv::imwrite(strFile, mat);
 }
+
 bool WeldCircleInspection::LargeCircleDetect(cv::Mat inputMat, cv::Mat& outputMat, double minDist,
     double param1, double param2,
     int minRadius, int maxRadius) {
 
-    std::vector<cv::Vec3f> circles;
-    cv::HoughCircles(inputMat, circles,
-        cv::HOUGH_GRADIENT, 1, minDist,
-        param1, param2,
-        minRadius, maxRadius);
+     // Down-scale
+    double scaleFactor = 0.5;  // magnification
+    int scaleMinRadius = (double)minRadius * scaleFactor;
+    int scaleMaxRadius = (double)maxRadius * scaleFactor;
+    int scaleWidth = m_image.cols * scaleFactor;
+    int scaleHeight = m_image.rows * scaleFactor;
+    double scaleMinDist = minDist * scaleFactor;
 
+    cv::Mat resizedImage;
+    cv::resize(inputMat, resizedImage, cv::Size(scaleWidth, scaleHeight), scaleFactor, scaleFactor, cv::INTER_AREA);
+    SaveBmp("resizeImage", resizedImage);
+
+    // Circle Detecting from Down-scale Image
+    std::vector<cv::Vec3f> circles;
+    cv::HoughCircles(resizedImage, circles, cv::HOUGH_GRADIENT, 1, scaleMinDist, param1, param2,
+        scaleMinRadius, scaleMaxRadius);
+    
     if (circles.empty()) {
         std::cout << "==================================\n";
         std::cout << "Hough circle detect FAILED\n";
@@ -57,17 +68,22 @@ bool WeldCircleInspection::LargeCircleDetect(cv::Mat inputMat, cv::Mat& outputMa
         return false;
     }
 
-    // circle
     for (size_t i = 0; i < circles.size(); i++) {
         cv::Vec3i c = circles[i];
         int circleX = c[0], circleY = c[1], radius = c[2];
-        // circle info copy
-        m_cartesianCenter = { circleX, circleY };
-        m_nCircumscribedRadius = radius;
 
-        cv::circle(outputMat, cv::Point(circleX, c[1]), radius, cv::Scalar(0, 255, 0), 2);
-        cv::circle(outputMat, cv::Point(circleX, c[1]), 2, cv::Scalar(0, 0, 255), 3);
+        // up-scale
+        cv::Point originalCenter(cvRound(circleX * (1 / scaleFactor)), cvRound(circleY * (1 / scaleFactor)));
+        int originalRadius = cvRound(radius * (1 / scaleFactor));
+
+        m_cartesianCenter = { originalCenter.x, originalCenter.y };
+        m_nCircumscribedRadius = originalRadius;
+
+        // 원의 중심과 반지름을 원본 이미지에 맞게 보정 후 그리기
+        cv::circle(outputMat, originalCenter, originalRadius, cv::Scalar(0, 255, 0), 2); // 원
+        cv::circle(outputMat, originalCenter, 2, cv::Scalar(0, 0, 255), 3);  // 중심점
     }
+    std::cout << m_cartesianCenter.x << "," << m_cartesianCenter.y << "\n";
 
     return true;
 }
@@ -102,7 +118,6 @@ cv::Mat WeldCircleInspection::CathodeProc(cv::Mat& origImg) {
     outMat = origImg.clone();
 
     cv::Mat blur;
-
     int nIter = 2;
     for (int i = 0; i < nIter; i++) {
         // 1. Gaussian Blur                     cv::Size(11,11)
@@ -113,13 +128,55 @@ cv::Mat WeldCircleInspection::CathodeProc(cv::Mat& origImg) {
         clahe->apply(blur, cl1);
         outMat = cl1.clone();
     }
+
     
+
     return outMat;
+}
+
+bool WeldCircleInspection::CircumscribedDetect(cv::Mat& preProcImg) {
+    cv::Mat image = preProcImg.clone();
+    
+    cv::Mat binary;
+    cv::threshold(image, binary, 100, 255, cv::THRESH_BINARY_INV);
+    cv::imshow("binary", resizeShow(binary));
+    cv::waitKey(0);
+    SaveBmp("binary", binary);
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    cv::Mat resultImage = image.clone();
+    cv::cvtColor(resultImage, resultImage, cv::COLOR_GRAY2BGR);
+    int minRadius = 100, maxRadius = 800;
+    // 5. 각 컨투어에서 원의 중심과 반지름을 추정
+    for (size_t i = 0; i < contours.size(); i++) {
+        // 5.1. 최소 외접원 찾기 (왜곡된 원이라도 외접원을 찾을 수 있음)
+        cv::Point2f center;
+        float radius;
+        cv::minEnclosingCircle(contours[i], center, radius);
+
+        // 5.2. 반지름이 최소값과 최대값 사이인 경우에만 표시
+        if (radius >= minRadius && radius <= maxRadius) {
+            // 5.3. 원 그리기
+            cv::circle(resultImage, center, (int)radius, cv::Scalar(0, 0, 255), 2);  // 빨간색 원
+            cv::circle(resultImage, center, 3, cv::Scalar(0, 255, 0), 2);  // 중심점 표시 (초록색)
+            
+            
+            std::cout << center.x << ', ' << center.y << "\n";
+        }
+    }
+    cv::imshow("dete", resizeShow(resultImage) );
+    cv::waitKey(0);
+        
+    return true;
 }
 bool WeldCircleInspection::WeldCircleDetect() {
     // [ 0. Read]
     TimeStart();
-    std::string path = m_filePath + "90.bmp";
+    developMode = true;
+    std::string path = m_filePath + "270.bmp";
+
     if (!ReadImage(path))
         return false;
     TimeEnd("\n\n 0) Read Image ");
@@ -138,17 +195,24 @@ bool WeldCircleInspection::WeldCircleDetect() {
     }
 
     if (developMode) 
-        SaveBmp(preProcImg, "1) pre-Processing Image");
+        SaveBmp("1) pre-Processing Image", preProcImg);
     TimeEnd("\n\n 1) Processing Time : ");
 
     // [ 2. Hough Circle Transform (Large Circle detect) ]
     TimeStart();
-    double param1 = 50, param2 = 30, minDist = 3000;        // magicNum
+    
+    // origCode
+    //double param1 = 50, param2 = 30;      // scale 1
+    double param1 = 130, param2 = 20;       // scale 0.5
+
+    int nMinDist = std::min(m_image.cols, m_image.rows);
+    double minDist = (double)nMinDist;
+
     int minRadius = 700, maxRadius = 800;
     if (!LargeCircleDetect(preProcImg, m_colorImage, minDist, param1, param2, minRadius, maxRadius))
         return false;
     if (developMode) {
-        SaveBmp(m_colorImage, "2) [houghCl] Image");
+        SaveBmp("2) [houghCl] Image", m_colorImage);
         cv::imshow("Hough Circles", resizeShow(m_colorImage));
         cv::waitKey(0);
     }
@@ -284,12 +348,11 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     }
 
     //2) unwrapimage To binary
-    cv::Mat sobelX, sobelY, magnitudeImage;
+    cv::Mat sobelX;
     cv::Sobel(unwrapimage, sobelX, CV_8UC1, 1, 0, 3);
 
-
     cv::Mat binary;
-    int nThreshold = 40;
+    int nThreshold = 50;
     int nBinaryMax = 255;
     cv::threshold(sobelX, binary, nThreshold, nBinaryMax, cv::THRESH_BINARY);                // magicNum
 
@@ -300,8 +363,10 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
         int maxEdgeX = -1;
         int maxEdgeValue = -1;
 
-        //----- Range check-----
-        for (int x = unwrapimage.cols / 2; x < unwrapimage.cols; x++) {
+        //for (int x = 0; x < unwrapimage.cols; x++) {      //orig Range
+        
+        // Range hardcoding
+        for (int x = unwrapimage.cols/2; x < unwrapimage.cols; x++) {
             int edgeValue = binary.at<uchar>(y, x);
             if (edgeValue == nBinaryMax) {
                 maxEdgeValue = edgeValue;
@@ -353,17 +418,15 @@ bool WeldCircleInspection::SmallCircleDetect(cv::Mat& _image) {
     }
 
     if (developMode) {
-        SaveBmp(unwrapimage, "3.1) Unwrapped image");
-        SaveBmp(sobelX, "3.2) sobel");
-        SaveBmp(binary, "3.3) binary");
-        SaveBmp(resultImage, "3.4) Least-Squares Img");
-        SaveBmp(m_colorImage, "Welding Circle Inspection");
-        cv::imshow("circle Inspection", resizeShow(m_colorImage));
-        cv::waitKey(0);
+        SaveBmp("3.1) Unwrapped image", unwrapimage);
+        SaveBmp("3.2) sobel", sobelX);
+        SaveBmp("3.3) binary", binary);
+        SaveBmp("3.4) Least-Squares Img", resultImage);
+        SaveBmp("4) Welding Circle Inspection", m_colorImage);
     }
     else {
-        SaveBmp(resultImage, "3-1) Least-Squares Img");
-        SaveBmp(m_colorImage, "3-2) Welding Circle Inspection");
+        SaveBmp("3.4) Least-Squares Img", resultImage);
+        SaveBmp("4) Welding Circle Inspection", m_colorImage);
     }
     
 

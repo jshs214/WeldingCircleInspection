@@ -33,7 +33,7 @@ private:
 	// For Utility
 	bool ReadImage(std::string path);
 	cv::Mat resizeShow(cv::Mat mat);
-	void SaveBmp(cv::Mat mat, std::string name);
+	void SaveBmp(std::string name, cv::Mat mat);
 
 	// algorithm
 	// [pre -Processing]
@@ -46,6 +46,9 @@ private:
 	std::pair<float, float> LeastSquares(const std::vector<cv::Point>& points);
 	std::pair<float, float> Ransac(std::vector<cv::Point>& points, int maxIterations,
 		float threshold, int& inlierCount);
+
+	bool CircumscribedDetect(cv::Mat& preProImg);
+
 
 private:
 	cv::Mat m_image;		//gray-scale
