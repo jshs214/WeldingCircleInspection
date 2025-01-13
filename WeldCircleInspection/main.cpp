@@ -1,7 +1,7 @@
 #include "WeldCircleInspection.h"
 
 int main() {
-    eType mode = eType::ANODE;
+    eType mode = eType::CATHODE;
 
     WeldCircleInspection wci = WeldCircleInspection(mode);
 

@@ -26,35 +26,38 @@ public:
 	WeldCircleInspection(eType type);
 	~WeldCircleInspection();
 
-	// pre -Processing
-	cv::Mat AnodeProc(cv::Mat& origImg);
-	cv::Mat CathodeProc(cv::Mat& origImg);
-
-	// Main logic - Circle Detect Function
+	// Main logic
 	bool WeldCircleDetect();	
-
-	bool SmallCircleDetect(cv::Mat& image);
 
 private:
 	// For Utility
+	bool ReadImage(std::string path);
 	cv::Mat resizeShow(cv::Mat mat);
 	void SaveBmp(cv::Mat mat, std::string name);
 
 	// algorithm
-	bool CircleDetectDraw(cv::Mat inputMat, cv::Mat& outputMat, double minDist,
+	// [pre -Processing]
+	cv::Mat AnodeProc(cv::Mat& origImg);
+	cv::Mat CathodeProc(cv::Mat& origImg);
+	bool LargeCircleDetect(cv::Mat inputMat, cv::Mat& outputMat, double minDist,
 		double param1, double param2,
 		int minRadius, int maxRadius);
-	
+	bool SmallCircleDetect(cv::Mat& image);
+	std::pair<float, float> LeastSquares(const std::vector<cv::Point>& points);
+	std::pair<float, float> Ransac(std::vector<cv::Point>& points, int maxIterations,
+		float threshold, int& inlierCount);
+
 private:
 	cv::Mat m_image;		//gray-scale
 	cv::Mat m_colorImage;	//3ch
 
 	// circle Info
 	int m_nCircumscribedRadius;				//외접 radius
-	int m_nInscribedRadius;					//내접 radius
-	cv::Point2i m_cartesianCenter;
+	std::vector<std::pair<int, float>> m_vInscribed;		// radian, radius
+	std::vector<std::pair<int, float>> m_vWeldBeadWidth;	// radian, welding Width
+	float m_fMinWeldWidth =INT_MAX , m_fMaxWeldWidth = INT_MIN;
 
-	int m_nWeldWidth;
+	cv::Point2i m_cartesianCenter;
 
 
 	// For Utility 
@@ -62,11 +65,11 @@ private:
 	std::string m_filePath;
 	std::string m_outputPath;
 
-	//timer
+	// For timer
 	std::chrono::high_resolution_clock::time_point m_start_time;
 	std::chrono::high_resolution_clock::time_point m_end_time;
-
 	void TimeStart() { m_start_time = std::chrono::high_resolution_clock::now(); }
 	void TimeEnd(std::string str);
+	long long llWeldCircleDetectTime;
 };
 
