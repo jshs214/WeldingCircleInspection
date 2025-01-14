@@ -4,8 +4,8 @@
 #define _USE_MATH_DEFINES // for C++
 #include <cmath>
 #include <numeric>
+#include <map>
 #include "opencv2/opencv.hpp"
-
 
 enum class eType
 {
@@ -47,6 +47,7 @@ private:
 	std::pair<float, float> Ransac(std::vector<cv::Point>& points, int maxIterations, float threshold, int& inlierCount);
 	std::pair<float, float> LeastSquares(const std::vector<cv::Point>& points);
 
+	bool __SmallCircleDetect(cv::Mat& image);
 private:
 	cv::Mat m_image;		//gray-scale
 	cv::Mat m_colorImage;	//3ch
