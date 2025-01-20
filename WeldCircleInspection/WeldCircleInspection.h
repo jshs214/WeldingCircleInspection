@@ -16,13 +16,23 @@ enum class eType
 };
 
 /*
+	* [Developing--]
+		pre-processing image Circle unwrap -> Sobel -> binary
+		-> EdgeX point -> RANSAN -> Least Squares
+
+		step 1 : convert  circle -> 2d unwrapped image
+		step 2 : unwrapped image To binary image
+		step 3 : Width-axis Edge inspection
+		step 4 : make small Circle
+*/
+/*
 	--> ANODE, CATHODE ñé 1°³ »ç¿ë Áß
 */
 #pragma once
 class WeldCircleInspection
 {
 public:
-	WeldCircleInspection(eType type);
+	WeldCircleInspection();
 	~WeldCircleInspection();
 
 	// Main logic
@@ -43,11 +53,11 @@ private:
 		double param1, double param2,
 		int minRadius, int maxRadius);
 	// [circle To 2d-image]
-	bool SmallCircleDetect(cv::Mat& image);
+	bool __SmallCircleDetect(cv::Mat& image);	// cv Polar
 	std::pair<float, float> Ransac(std::vector<cv::Point>& points, int maxIterations, float threshold, int& inlierCount);
 	std::pair<float, float> LeastSquares(const std::vector<cv::Point>& points);
-
-	bool __SmallCircleDetect(cv::Mat& image);
+	bool CalculateCircleBead();
+	
 private:
 	cv::Mat m_image;		//gray-scale
 	cv::Mat m_colorImage;	//3ch

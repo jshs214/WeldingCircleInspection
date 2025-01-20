@@ -1,9 +1,7 @@
 #include "WeldCircleInspection.h"
 
 int main() {
-    eType mode = eType::CATHODE;
-
-    WeldCircleInspection wci = WeldCircleInspection(mode);
+    WeldCircleInspection wci = WeldCircleInspection();
 
     if (!wci.WeldCircleDetect()) {
         std::cout << " WeldCircleDetect   Failed \n";
