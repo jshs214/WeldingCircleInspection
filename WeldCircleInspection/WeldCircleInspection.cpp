@@ -1,7 +1,7 @@
 #include "WeldCircleInspection.h"
 
 int developMode ;
-
+#define THICKNESS 3
 WeldCircleInspection::WeldCircleInspection() {
     
     llWeldCircleDetectTime = 0;
@@ -12,6 +12,81 @@ WeldCircleInspection::~WeldCircleInspection() {
 
 }
 
+bool WeldCircleInspection::WeldCircleDetect() {
+    /* hardcoding */
+    developMode = false;
+
+    //// cathode Albeodo
+    m_EnumType = eType::CATHODE;
+    std::string path = m_filePath + "Result [2024-07-22]19.32.44.247_0_1_0.bmp";
+
+    //// Anode Albeodo
+    /*m_EnumType = eType::ANODE;
+    std::string path = m_filePath + "Result [2024-07-22]19.31.02.262_0_0_0.bmp";*/
+    
+
+    // [ 0. Read]
+    TimeStart();
+    if (!ReadImage(path))
+        return false;
+    TimeEnd("\n\n 0) Read Image ");
+
+
+    // [ 1. Pre-processing ]
+    TimeStart();
+    cv::Mat preProcImg;
+
+    if (m_EnumType == eType::ANODE)
+        preProcImg = AnodeProc(m_image);
+    else if (m_EnumType == eType::CATHODE)
+        preProcImg = CathodeProc(m_image);
+    else {
+        std::cout << "weld image type check !\n";
+        return false;
+    }
+
+    if (developMode)
+        SaveBmp("1) pre-Processing Image", preProcImg);
+    TimeEnd("\n\n 1) Processing Time : ");
+
+    // [ 2. Hough Circle Transform (Large Circle detect) ]
+    TimeStart();
+    double param1 = 130, param2 = 20;       // scale 0.5
+
+    int nMinDist = std::min(m_image.cols, m_image.rows);
+    double minDist = (double)nMinDist;
+
+    int minRadius = 700, maxRadius = 800;
+    
+    if (!LargeCircleDetect(preProcImg, m_colorImage, minDist, param1, param2, minRadius, maxRadius))
+        return false;
+    if (developMode) {
+        SaveBmp("2) [houghCl] Image", m_colorImage);
+        cv::imshow("Hough Circles", resizeShow(m_colorImage));
+        cv::waitKey(0);
+    }
+    TimeEnd("\n\n 2) Large Circle Inspection Time : ");
+
+    // [ 3. Find small Circle ]
+    TimeStart();
+    //if (!SmallCircleDetect(preProcImg))
+    if (!__SmallCircleDetect(preProcImg))
+        return false;
+    TimeEnd("\n\n 3) Small Circle Inspection Time : ");
+
+    // check Total Time
+    std::cout << "\n\n [Total Detecting Time] " << llWeldCircleDetectTime << "ms\n";
+    
+    // [4. weld Circle area ]
+    if (!CalculateCircleBead()) {
+        return false;
+    }
+
+    cv::imshow("Result", resizeShow(m_colorImage));
+    cv::waitKey(0);
+
+    return true;
+}
 cv::Mat WeldCircleInspection::resizeShow(cv::Mat mat) {
     cv::Mat resizeMat;
     double scale = 0.3;
@@ -60,11 +135,11 @@ bool WeldCircleInspection::LargeCircleDetect(cv::Mat inputMat, cv::Mat& outputMa
         int originalRadius = cvRound(radius * (1 / scaleFactor));
 
         m_cartesianCenter = { originalCenter.x, originalCenter.y };
-        m_nCircumscribedRadius = originalRadius;
+        m_nOuterRadius = originalRadius;
 
         // 원의 중심과 반지름을 원본 이미지에 맞게 보정 후 그리기
-        cv::circle(outputMat, originalCenter, originalRadius, cv::Scalar(0, 255, 0), 2); // 원
-        cv::circle(outputMat, originalCenter, 2, cv::Scalar(0, 0, 255), 3);  // 중심점
+        cv::circle(outputMat, originalCenter, originalRadius, cv::Scalar(255, 0, 0), THICKNESS); // 원
+        cv::circle(outputMat, originalCenter, 2, cv::Scalar(0, 0, 255), THICKNESS);  // 중심점
     }
     std::cout << m_cartesianCenter.x << "," << m_cartesianCenter.y << "\n";
 
@@ -115,89 +190,6 @@ cv::Mat WeldCircleInspection::CathodeProc(cv::Mat& origImg) {
     return outMat;
 }
 
-bool WeldCircleInspection::WeldCircleDetect() {
-    
-    int nRet = 0;   // for debugging
-    m_EnumType = eType::CATHODE;
-    // [ 0. Read]
-    TimeStart();
-    developMode = true;
-    // cathode Albeodo
-    std::string path = m_filePath + "Result [2024-07-22]19.32.44.247_0_1_0.bmp";
-    // Anode Albeodo
-    //std::string path = m_filePath + "Result [2024-07-22]19.31.02.262_0_0_0.bmp";
-    //std::string path = m_filePath + "+180.bmp";
-
-    if (!ReadImage(path))
-        return false;
-    TimeEnd("\n\n 0) Read Image "); 
-    nRet++;
-
-    // [ 1. Pre-processing ]
-    TimeStart();
-    cv::Mat preProcImg;
-
-    if (m_EnumType == eType::ANODE)
-        preProcImg = AnodeProc(m_image);
-    else if (m_EnumType == eType::CATHODE)
-        preProcImg = CathodeProc(m_image);
-    else {
-        std::cout << "weld image type check !\n";
-        return false;
-    }
-
-    if (developMode) 
-        SaveBmp("1) pre-Processing Image", preProcImg);
-    TimeEnd("\n\n 1) Processing Time : ");
-    nRet++;
-
-    // [ 2. Hough Circle Transform (Large Circle detect) ]
-    TimeStart();
-    //double param1 = 50, param2 = 30;      // scale 1  // origCode
-    double param1 = 130, param2 = 20;       // scale 0.5
-
-    int nMinDist = std::min(m_image.cols, m_image.rows);
-    double minDist = (double)nMinDist;
-
-    int minRadius = 700, maxRadius = 800;
-    if (!LargeCircleDetect(preProcImg, m_colorImage, minDist, param1, param2, minRadius, maxRadius))
-        return false;
-    if (developMode) {
-        SaveBmp("2) [houghCl] Image", m_colorImage);
-        cv::imshow("Hough Circles", resizeShow(m_colorImage));
-        cv::waitKey(0);
-    }
-    TimeEnd("\n\n 2) Large Circle Inspection Time : ");
-    nRet++;
-    
-    // [ 3. Find small Circle ]
-    TimeStart();
-    //if (!SmallCircleDetect(preProcImg))
-    if (! __SmallCircleDetect(preProcImg))
-        return false;
-    TimeEnd("\n\n 3) Small Circle Inspection Time : ");
-    nRet++;
-
-    
-
-    
-    // check Total Time
-    std::cout << "\n\n [Total Time] " << llWeldCircleDetectTime << "ms\n";
-    std::cout << "\n\n [Weld Bead Width] min(" << m_fMinWeldWidth << ") ~ max(" << m_fMaxWeldWidth << ")\n";
-    std::cout << "\n\n [Outer Circle r] : " << m_nCircumscribedRadius << "\n";
-
-
-    // [4. weld Circle area ]
-    if (!CalculateCircleBead()) {
-        return false;
-    }
-
-    cv::imshow("Result", resizeShow(m_colorImage));
-    cv::waitKey(0);
-
-
-    return true;
-}
 /* Least-Squares 
  * @return : slope_Y, intercept_Y */
 std::pair<float, float> WeldCircleInspection::LeastSquares(const std::vector<cv::Point>& points) {
@@ -294,7 +286,7 @@ bool WeldCircleInspection::__SmallCircleDetect(cv::Mat& _image) {
 
     // Outer circle Info
     cv::Point2i center(m_cartesianCenter.x, m_cartesianCenter.y);
-    int nRadius = m_nCircumscribedRadius;
+    int nRadius = m_nOuterRadius;
     const int cx = m_cartesianCenter.x;
     const int cy = m_cartesianCenter.y;
 
@@ -303,11 +295,11 @@ bool WeldCircleInspection::__SmallCircleDetect(cv::Mat& _image) {
     * Width  : r
     * Height : 0~ 360 (degree)까지 균등 분포
     */
-    int polarImageWidth = m_nCircumscribedRadius;
-    int polarImageHeight = 360;
-    
+    int polarImageWidth = m_nOuterRadius;
+    int polarImageHeight = m_image.rows;
+
     /* Polar Image Edge 검출 시 ROI*/
-    int nMinEdgeX = 400, nMaxEdgeX = 600;
+    int nMinEdgeX = 400, nMaxEdgeX = 500;
 
     // 1) Circle -> unwrapimage
     cv::Size dSize(polarImageWidth, polarImageHeight);
@@ -318,97 +310,132 @@ bool WeldCircleInspection::__SmallCircleDetect(cv::Mat& _image) {
     cv::Mat sobelX;
     cv::Sobel(polarImage, sobelX, CV_8UC1, 1, 0, 3);
 
-    cv::Mat binary;
-    int nThreshold = 30;
-    int nBinaryMax = 255;
-    cv::threshold(sobelX, binary, nThreshold, nBinaryMax, cv::THRESH_BINARY);
-
-
-
-    // 3) Width-axis Edge inspection
+   // 3) Width-axis Edge inspection
     std::vector<cv::Point>edgePoints;
 
     for (int y = 0; y < polarImageHeight; y++) {
-        int maxEdgeX = -1;
-        int maxEdgeValue = -1;
+        int nXcoord = -1;
+        int nXmaxval= -1;
 
-        //for (int x = 0; x < unwrapimage.cols; x++) {      //orig Range
         // Range-hardcoding
         for (int x = nMinEdgeX; x < nMaxEdgeX; x++) {
-            int edgeValue = binary.at<uchar>(y, x);
-            if (edgeValue == nBinaryMax) {
-                maxEdgeValue = edgeValue;
-                maxEdgeX = x;
-                break;  //처음 등장하는 Edge 검출
+            int val = sobelX.at<uchar>(y, x);
+            if (val > nXmaxval) {
+                nXcoord = x;
+                nXmaxval = val;
             }
         }
-        if (maxEdgeX != -1) {
-            edgePoints.push_back(cv::Point(maxEdgeX, y));
-        }
+        edgePoints.push_back({ nXcoord, y });
     }
 
     // 4) make small Circle
-    // ransac parameter
     int maxIterations = 200000;         // iterator
     float ransacThreshold = 0.03f;      // Inlier Threshold
     int inlierCount = 0;
-    // 4-1) ransac
+
+    // 4-1) ransac & Least-Sqaures
     std::pair<float, float> fX = Ransac(edgePoints, maxIterations, ransacThreshold, inlierCount);
     if (fX.first == -1 && fX.second == -1) {
         std::cout << "Ransac Error \n";
         return false;
     }
 
+    /* 추출된 직선의 기울기, 절편 */
     float slopeX = fX.first;
     float interceptX = fX.second;
 
     std::cout << slopeX << "," << interceptX << "\n";
     
-    // Inscribed Circel info
-    for (int degree = 0; degree < polarImageHeight; degree++) {
-        double radian = degree * M_PI / 180.0;  // degree To radian
-        // y = mX + b
-        float fRadius = degree * slopeX + interceptX;
+    // 내부 원 좌표 계산 Polar
+    for (int y = 0; y< polarImageHeight; y++) {
+        float fRealDegree = (y / (double)polarImageHeight) * 360.0;     // interpolation Roll-back
+        // 직선의 방정식 y = mX + b
+        float fPolar_Radian= (fRealDegree * M_PI) / 180.0;               // degree To radian
 
-        m_vInscribed.push_back({ radian, fRadius });
+        float fPolar_InnerRadius = y * slopeX + interceptX;
+        float fPolar_OuterRadius = nRadius;
 
-        float fWeldBeadWidth = (float)m_nCircumscribedRadius - fRadius;
-        m_vWeldBeadWidth.push_back({ radian, fWeldBeadWidth });
+        m_vecPolarInner.push_back({ fPolar_Radian, fPolar_InnerRadius });
+        m_vecPolarOuter.push_back({ fPolar_Radian, fPolar_OuterRadius });
+    }
+    
+    // 내부 원 좌표 변환 Polar to cartesian
+    if (m_vecPolarInner.size() != m_vecPolarOuter.size())
+        return false;
 
-        m_fMinWeldWidth = std::min(m_fMinWeldWidth, fWeldBeadWidth);
-        m_fMaxWeldWidth = std::max(m_fMaxWeldWidth, fWeldBeadWidth);
+    for (int i = 0; i < m_vecPolarInner.size(); i ++) {
+        double radian = m_vecPolarInner[i].first;
+
+        float fInnerRadius = m_vecPolarInner[i].second;
+        float fOuterRadius = m_vecPolarOuter[i].second;
+
+        /* cartesian에서 내부 원 좌표 */
+        int nCartesianInner_x = (fInnerRadius * cos(radian)) + cx;
+        int nCartesianInner_y = (fInnerRadius * sin(radian)) + cy;
+
+        int nCartesianOuter_x = (fOuterRadius * cos(radian)) + cx;
+        int nCartesianOuter_y = (fOuterRadius * sin(radian)) + cy;
+
+        //double degree = radian * (180.0 / M_PI);
+        m_vecCartesianInner.push_back({ nCartesianInner_x, nCartesianInner_y });
+        m_vecCartesianOuter.push_back({ nCartesianOuter_x, nCartesianOuter_y });
     }
 
-    // 4-2) draw
-    float yStart_X = 0 * slopeX + interceptX;                       // if(y ==0) -> x
-    float yEnd_X = (polarImageHeight)*slopeX + interceptX;       // if(y== height) -> x
 
-    // polar image draw
+    // 용접 비드 사이즈 계산
+    std::set<std::pair<int, int>> setWeldBead_pos;  // 중간 점을 저장할 set
+    for (int i = 0; i < m_vecCartesianInner.size(); i++) {
+        int x1 = m_vecCartesianInner[i].first;
+        int y1 = m_vecCartesianInner[i].second;
+        int x2 = m_vecCartesianOuter[i].first;
+        int y2 = m_vecCartesianOuter[i].second;
+
+        // 두 점 사이의 실제 유클리드 거리 계산
+        float distance = std::sqrt(std::pow(x2 - x1, 2) + std::pow(y2 - y1, 2));
+
+        // 두 점 사이의 간격을 기준으로 중간 점을 구함
+        int numPointsBetween = round(distance);  // 거리만큼 점의 개수를 구함
+
+        for (int j = 0; j <= numPointsBetween; ++j) {
+            float t = j / (float)numPointsBetween;  // 보간 비율
+            int intermediate_x = (int)(x1 + t * (x2 - x1));
+            int intermediate_y = (int)(y1 + t * (y2 - y1));
+
+            setWeldBead_pos.insert({ intermediate_x, intermediate_y });
+            cv::circle(m_colorImage, cv::Point(intermediate_x, intermediate_y), 1, cv::Scalar(0, 122, 122), 1);
+        }
+    }
+
+    m_nWeldingBeadPixelCnt = setWeldBead_pos.size();
+
+    // Draw
     cv::Mat resultImage;
     cv::cvtColor(polarImage, resultImage, cv::COLOR_GRAY2BGR);
-    cv::line(resultImage, cv::Point(yStart_X, 0), cv::Point(yEnd_X, polarImageHeight), cv::Scalar(0, 0, 255), 1);
 
-    // cartesian image Draw
-    for (const auto& polar : m_vInscribed) {
-        double radian = polar.first;
-        float r = polar.second;
-        float x = (r * cos(radian)) + cx;
-        float y = (r * sin(radian)) + cy;
+    float yStart_X = 0 * slopeX + interceptX;                     // if(y ==0) -> x 좌표
+    float yEnd_X = (polarImageHeight)*slopeX + interceptX;        // if(y== height) -> x 좌표
 
-        int degree = round(radian * (180 / M_PI));
-
-        cv::circle(m_colorImage, cv::Point(x, y), 2, cv::Scalar(0, 0, 255), 2);
+    /* cartesian Image */
+    for (auto i : m_vecCartesianInner) {
+        cv::circle(m_colorImage, cv::Point(i.first, i.second), 1, cv::Scalar(0, 0, 255), THICKNESS);
     }
+    
+    /*  polar Image  */
+    /* Least-Squares Line */
+    cv::line(resultImage, cv::Point(yStart_X, 0), cv::Point(yEnd_X, polarImageHeight), cv::Scalar(255, 0, 0), THICKNESS);
+    /* Edge Detect Point*/
+    for (auto i : edgePoints)
+        cv::circle(resultImage, cv::Point(i.x, i.y), 1, cv::Scalar(0, 0, 255), 1);
+
 
     if (developMode) {
         SaveBmp("3.1) Unwrapped image", polarImage);
         SaveBmp("3.2) sobel", sobelX);
-        SaveBmp("3.3) binary", binary);
-        SaveBmp("3.4) Least-Squares Img", resultImage);
+        SaveBmp("3.3) Least-Squares Img", resultImage);
         SaveBmp("4) Welding Circle Inspection", m_colorImage);
     }
     else {
-        SaveBmp("3.4) Least-Squares Img", resultImage);
+        SaveBmp("3.3) Least-Squares Img", resultImage);
         SaveBmp("4) Welding Circle Inspection", m_colorImage);
     }
 
@@ -466,19 +493,7 @@ bool WeldCircleInspection::ReadImage(std::string strImg) {
 }
 
 bool WeldCircleInspection::CalculateCircleBead() {
-    float fOuterCircleArea = (float)(m_nCircumscribedRadius * m_nCircumscribedRadius) * M_PI;
-    
-    // Inner circle TEST
-    float fInnerRadius = m_nCircumscribedRadius - m_fMinWeldWidth;
-    float fInnerCircleArea = fInnerRadius * fInnerRadius * M_PI;
-    
-
-    std::cout << "\n\n\n\n [Circle Info] : " <<'\n';
-    std::cout << " [Outer r] : " << m_nCircumscribedRadius << '\n';
-    std::cout << " [Inner r] : " << fInnerRadius << "\n";
-    std::cout << " [bead circle area ] : " << fOuterCircleArea - fInnerCircleArea << "\n";
-
-
+    std::cout << "Welding Bead Area : " << m_nWeldingBeadPixelCnt << " pixels\n";
 
     return true;
 }

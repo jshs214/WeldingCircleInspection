@@ -48,6 +48,7 @@ private:
 	// [pre -Processing]
 	cv::Mat AnodeProc(cv::Mat& origImg);
 	cv::Mat CathodeProc(cv::Mat& origImg);
+
 	// [based Hough Transform]
 	bool LargeCircleDetect(cv::Mat inputMat, cv::Mat& outputMat, double minDist,
 		double param1, double param2,
@@ -65,15 +66,17 @@ private:
 	// circle Info
 	cv::Point2i m_cartesianCenter;
 	// Circumscribed Circle
-	int m_nCircumscribedRadius;								
+	int m_nOuterRadius;								
 	
 	// Inscribed Circle
 	// 3 o'clock -> degree 0
 	// 9 o'clock -> degree 180
-	std::vector<std::pair<double, float>> m_vInscribed;		// radian, radius
-	std::vector<std::pair<double, float>> m_vWeldBeadWidth;	// radian, welding Width
+	std::vector<std::pair<float, float>> m_vecPolarInner;		// radian, radius
+	std::vector<std::pair<float, float>> m_vecPolarOuter;		// radian, radius
+	std::vector<std::pair<int, int>> m_vecCartesianInner;		//x,y
+	std::vector<std::pair<int, int>> m_vecCartesianOuter;		//x,y
 
-	float m_fMinWeldWidth =INT_MAX , m_fMaxWeldWidth = INT_MIN;		//test
+	int m_nWeldingBeadPixelCnt;
 
 	// For Utility 
 	eType m_EnumType;
@@ -86,6 +89,5 @@ private:
 	void TimeStart() { m_start_time = std::chrono::high_resolution_clock::now(); }
 	void TimeEnd(std::string str);
 	long long llWeldCircleDetectTime;
-
 };
 
