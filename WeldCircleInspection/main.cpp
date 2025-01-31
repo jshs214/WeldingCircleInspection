@@ -4,7 +4,6 @@ int main() {
     WeldCircleInspection wci = WeldCircleInspection();
 
     if (!wci.WeldCircleDetect()) {
-        std::cout << " WeldCircleDetect   Failed \n";
         return 0;
     }
 

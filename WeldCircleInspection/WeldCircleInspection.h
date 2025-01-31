@@ -40,7 +40,7 @@ public:
 
 private:
 	// For Utility
-	bool ReadImage(std::string path);
+	bool ReadImage();
 	cv::Mat resizeShow(cv::Mat mat);
 	void SaveBmp(std::string name, cv::Mat mat);
 
@@ -55,8 +55,8 @@ private:
 		int minRadius, int maxRadius);
 	// [circle To 2d-image]
 	bool __SmallCircleDetect(cv::Mat& image);	// cv Polar
-	std::pair<float, float> Ransac(std::vector<cv::Point>& points, int maxIterations, float threshold, int& inlierCount);
-	std::pair<float, float> LeastSquares(const std::vector<cv::Point>& points);
+	cv::Point2f Ransac(std::vector<cv::Point>& points, int maxIterations, float threshold, int& inlierCount);
+	cv::Point2f LeastSquares(const std::vector<cv::Point>& points);
 	bool CalculateCircleBead();
 	
 private:
@@ -71,16 +71,17 @@ private:
 	// Inscribed Circle
 	// 3 o'clock -> degree 0
 	// 9 o'clock -> degree 180
-	std::vector<std::pair<float, float>> m_vecPolarInner;		// radian, radius
-	std::vector<std::pair<float, float>> m_vecPolarOuter;		// radian, radius
-	std::vector<std::pair<int, int>> m_vecCartesianInner;		//x,y
-	std::vector<std::pair<int, int>> m_vecCartesianOuter;		//x,y
+	std::vector<cv::Point2f> m_vecPolarInner;		// radian, radius
+	std::vector<cv::Point2f> m_vecPolarOuter;		// radian, radius
+	std::vector<cv::Point2i> m_vecCartesianInner;		//x,y
+	std::vector<cv::Point2i> m_vecCartesianOuter;		//x,y
 
 	int m_nWeldingBeadPixelCnt;
 
 	// For Utility 
 	eType m_EnumType;
 	std::string m_filePath;
+	std::string m_fileName;
 	std::string m_outputPath;
 
 	// For time
