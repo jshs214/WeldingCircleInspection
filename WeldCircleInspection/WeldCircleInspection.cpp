@@ -16,7 +16,7 @@ WeldCircleInspection::~WeldCircleInspection() {
 
 bool WeldCircleInspection::WeldCircleDetect() {
     /* hardcoding */
-    developMode = false;
+    developMode = true;
 
     //// cathode Albeodo
     m_EnumType = eType::CATHODE;
@@ -42,6 +42,7 @@ bool WeldCircleInspection::WeldCircleDetect() {
         std::cout << "weld image type check !\n";
         return false;
     }
+    //preProcImg = m_image;
 
     if (developMode)
         SaveBmp("1) pre-Processing Image", preProcImg);
@@ -56,8 +57,8 @@ bool WeldCircleInspection::WeldCircleDetect() {
 
     int minRadius, maxRadius;
     if (m_image.cols > 5000) {
-        minRadius = 1150;
-        maxRadius = 1250;
+        minRadius = 1100;
+        maxRadius = 1200;
     }else{
         minRadius = 700;
         maxRadius = 800;
@@ -274,17 +275,6 @@ cv::Point2f WeldCircleInspection::Ransac(std::vector<cv::Point>& points, int max
     return bestLine;
 }
 
-/*
-    * [Developing--]
-        pre-processing image Circle unwrap -> Sobel -> binary
-        -> EdgeX point -> RANSAN -> Least Squares
-
-        step 1 : convert  circle -> 2d unwrapped image
-        step 2 : unwrapped image To binary image
-        step 3 : Width-axis Edge inspection
-        step 4 : make small Circle
-*/
-
 bool WeldCircleInspection::__SmallCircleDetect(cv::Mat& _image) {
     cv::Mat image = _image;
 
@@ -305,7 +295,7 @@ bool WeldCircleInspection::__SmallCircleDetect(cv::Mat& _image) {
     /* Polar Image Edge 검출 시 ROI*/
     int nMinEdgeX, nMaxEdgeX;
     if (m_image.cols > 5000) {
-        nMinEdgeX = 600, nMaxEdgeX = 750;
+        nMinEdgeX = 900, nMaxEdgeX = 950;
     }
     else {
         nMinEdgeX = 400, nMaxEdgeX = 500;
@@ -418,20 +408,14 @@ bool WeldCircleInspection::__SmallCircleDetect(cv::Mat& _image) {
         }
     }
 
-    // 5-2 cartesian image Welding area interpolation
-    cv::Mat dilate_mask;
-    cv::Mat dilate_kernel= cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-    cv::dilate(weldingBead_mask, dilate_mask, dilate_kernel);
-
     m_nWeldingBeadPixelCnt = cv::countNonZero(weldingBead_mask);
+    /* cartesian Image */
+    //m_colorImage.setTo(cv::Scalar(0, 77, 77), weldingBead_mask);
 
     // Draw
     cv::Mat resultImage;
     cv::cvtColor(polarImage, resultImage, cv::COLOR_GRAY2BGR);
     
-    /* cartesian Image */
-    m_colorImage.setTo(cv::Scalar(0, 77, 77), dilate_mask);
-
     for (int i = 0; i < m_vecCartesianInner.size(); i++) {
         cv::Point ptInner(m_vecCartesianInner[i].x, m_vecCartesianInner[i].y);
         cv::Point ptOuter(m_vecCartesianOuter[i].x, m_vecCartesianOuter[i].y);
@@ -474,31 +458,27 @@ bool WeldCircleInspection::ReadImage() {
     // hardcoding
     switch (m_EnumType) {
     case eType::ANODE: {
-        //m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\anode\\";
-        m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\";
-        m_fileName = "ai Result [2025-01-21]17.53.42.741_0_0_0.bmp";
+        m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\250210_Data\\Flat Dome\\Seal Pin(25M)\\";
+        m_fileName = "Shape 2(5.2).bmp";
+        break;
     }
-                     break;
     case eType::CATHODE: {
-        //m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\cathode\\";
-        m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\";
-        m_fileName = "cu Result [2025-01-21]17.42.40.092_0_0_0.bmp";
-    }
-                       break;
+        m_filePath = "C:\\Users\\hong\\Desktop\\hong\\Welding Bead DATA\\250210_Data\\Dome\\Seal Pin(25M)\\";
+        m_fileName = "Albedo.bmp";
+        break;
+    }                  
     default: {
         std::cout << "Initialize ERROR !!!\n";
+        break;
     }
-           break;
+           
     }
 
-    //m_outputPath = m_filePath.substr(0, m_filePath.size() - 1) + "Test\\";
-    m_outputPath = m_filePath + "Test\\";
+    m_outputPath = m_filePath + "Albedo Test\\";
     std::string path = m_filePath + m_fileName;
-
 
     m_image = cv::imread(path, cv::IMREAD_GRAYSCALE);
     m_colorImage = cv::imread(path, cv::IMREAD_COLOR);
-
 
     if (m_image.empty()) {
         std::cout << "\n\n\nImage not found!" << std::endl;
@@ -509,43 +489,39 @@ bool WeldCircleInspection::ReadImage() {
     }
 
     std::cout << "Image shape: " << m_image.cols << "x" << m_image.rows << std::endl;
-    /*cv::Point minLoc, maxLoc;
-    float minVal, maxVal;
-    cv::minMaxLoc(m_image, &minVal, &maxVal, &minLoc, &maxLoc);
-    std::cout << "Max pixel value: " << maxVal << ", Min pixel value: " << minVal << std::endl;*/
+
     return true;
 }
 
 bool WeldCircleInspection::CalculateCircleBead() {
-    std::cout << "\nWelding Bead Area : " << m_nWeldingBeadPixelCnt << " pixels\n";
+    std::cout << "\Bead Area : " << m_nWeldingBeadPixelCnt << " pixels\n";
 
     /* ROI --- RIGHT, BOTTOM, LEFT, TOP 계산*/
     // 각도, 좌표 (x,y )
-    cv::Point3i pt3 = { 0,0,0 };
-    int nAngleCnt = 4;
-    std::vector<cv::Point3i> vecAngleQuater(nAngleCnt, pt3 );
+    //cv::Point3i pt3 = { 0,0,0 };
+    //int nAngleCnt = 4;
+    //std::vector<cv::Point3i> vecAngleQuater(nAngleCnt, pt3 );
 
-    for (int i = 0; i < vecAngleQuater.size(); i++) {
-        int nIdx= i * (m_vecPolarInner.size() / nAngleCnt);
-        int nDegree = i * 90;
+    //for (int i = 0; i < vecAngleQuater.size(); i++) {
+    //    int nIdx= i * (m_vecPolarInner.size() / nAngleCnt);
+    //    int nDegree = i * 90;
 
-        int x = m_vecCartesianOuter[nIdx].x;
-        int y = m_vecCartesianOuter[nIdx].y;
+    //    int x = m_vecCartesianOuter[nIdx].x;
+    //    int y = m_vecCartesianOuter[nIdx].y;
 
-        vecAngleQuater[i] = { nDegree ,x, y };
-    }
+    //    vecAngleQuater[i] = { nDegree ,x, y };
+    //}
 
-    for (auto i : vecAngleQuater) {
-        int nDegree = i.x;
-        int x = i.y;
-        int y = i.z;
+    //for (auto i : vecAngleQuater) {
+    //    int nDegree = i.x;
+    //    int x = i.y;
+    //    int y = i.z;
 
-        int nHalf = 20;
-        cv::Rect rect(x- nHalf, y- nHalf, nHalf*2, nHalf*2);
-        cv::rectangle(m_colorImage, rect, cv::Scalar(0, 255, 0), THICKNESS);
-    }
-    
-
+    //    int nHalf = 20;
+    //    cv::Rect rect(x- nHalf, y- nHalf, nHalf*2, nHalf*2);
+    //    cv::rectangle(m_colorImage, rect, cv::Scalar(0, 255, 0), THICKNESS);
+    //}
+    //
 
     return true;
 }

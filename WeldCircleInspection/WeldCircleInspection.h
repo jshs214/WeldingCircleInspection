@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string>
 #include <chrono>
-#define _USE_MATH_DEFINES // for C++
+#define _USE_MATH_DEFINES	// for M_PI
 #include <cmath>
 #include <numeric>
 #include <map>
@@ -12,22 +12,9 @@ enum class eType
 	None = -1,
 	ANODE,
 	CATHODE,
-	LoadVoxelData,
+	eTypeSIZE,
 };
 
-/*
-	* [Developing--]
-		pre-processing image Circle unwrap -> Sobel -> binary
-		-> EdgeX point -> RANSAN -> Least Squares
-
-		step 1 : convert  circle -> 2d unwrapped image
-		step 2 : unwrapped image To binary image
-		step 3 : Width-axis Edge inspection
-		step 4 : make small Circle
-*/
-/*
-	--> ANODE, CATHODE ñé 1°³ »ç¿ë Áß
-*/
 #pragma once
 class WeldCircleInspection
 {
